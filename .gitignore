@@ -1,0 +1,10 @@
+# Node
+node_modules/
+
+# Build artifacts
+print-proxy-win.exe
+print-proxy-macos
+print-proxy
+
+# App Configuration
+printer-config.json

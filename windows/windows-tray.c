@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <winhttp.h>
 #include <ws2tcpip.h>
 #include <stdio.h>
 #include <wchar.h>
@@ -18,6 +19,7 @@
 #define MENU_RESTART 1006
 #define MENU_STOP 1007
 #define MENU_QUIT 1008
+#define MENU_TEST_PRINT 1009
 #define EDIT_IP 2001
 
 static HINSTANCE g_instance;
@@ -315,6 +317,61 @@ static BOOL prompt_for_ip(void) {
     return g_dialog_saved;
 }
 
+static DWORD WINAPI test_print_thread(LPVOID parameter) {
+    (void)parameter;
+    if (!port_is_online()) {
+        show_balloon(L"พิมพ์ทดสอบไม่สำเร็จ", L"Print Proxy ยัง Offline กรุณารอให้ server พร้อมก่อน", NIIF_ERROR);
+        return 0;
+    }
+
+    wchar_t printer_ip[64] = L"-";
+    read_printer_ip(printer_ip, ARRAYSIZE(printer_ip));
+    char printer_ip_utf8[128] = "-";
+    WideCharToMultiByte(CP_UTF8, 0, printer_ip, -1, printer_ip_utf8, sizeof(printer_ip_utf8), NULL, NULL);
+    SYSTEMTIME time;
+    GetLocalTime(&time);
+    char body[1024];
+    int body_length = _snprintf(body, sizeof(body),
+        "{\"text\":\"\\n================================\\n"
+        "  MeeSystemPos - TEST PRINT\\n"
+        "  Date: %04u-%02u-%02u %02u:%02u:%02u\\n"
+        "  Printer IP: %s\\n"
+        "  Status: OK\\n"
+        "================================\\n\\n\"}",
+        time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, printer_ip_utf8);
+    if (body_length <= 0 || body_length >= (int)sizeof(body)) return 0;
+
+    BOOL success = FALSE;
+    HINTERNET session = WinHttpOpen(L"MeeSystemPosPrintProxy/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    HINTERNET connection = session ? WinHttpConnect(session, L"127.0.0.1", 3001, 0) : NULL;
+    HINTERNET request = connection ? WinHttpOpenRequest(connection, L"POST", L"/print", NULL,
+                                                        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0) : NULL;
+    if (request) {
+        WinHttpSetTimeouts(request, 3000, 3000, 5000, 15000);
+        const wchar_t *headers = L"Content-Type: application/json\r\n";
+        if (WinHttpSendRequest(request, headers, (DWORD)-1L, body, (DWORD)body_length,
+                               (DWORD)body_length, 0) && WinHttpReceiveResponse(request, NULL)) {
+            DWORD status = 0;
+            DWORD status_size = sizeof(status);
+            if (WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                    WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size,
+                                    WINHTTP_NO_HEADER_INDEX)) {
+                success = status == 200;
+            }
+        }
+    }
+    if (request) WinHttpCloseHandle(request);
+    if (connection) WinHttpCloseHandle(connection);
+    if (session) WinHttpCloseHandle(session);
+
+    show_balloon(success ? L"พิมพ์ทดสอบสำเร็จ" : L"พิมพ์ทดสอบไม่สำเร็จ",
+                 success ? L"ส่งใบพิมพ์ทดสอบไปยังเครื่องพิมพ์แล้ว"
+                         : L"กรุณาตรวจสอบ Printer IP และการเชื่อมต่อเครื่องพิมพ์",
+                 success ? NIIF_INFO : NIIF_ERROR);
+    return 0;
+}
+
 static HICON create_printer_icon(void) {
     HDC screen = GetDC(NULL);
     HDC color_dc = CreateCompatibleDC(screen);
@@ -356,6 +413,7 @@ static void show_tray_menu(HWND window) {
     AppendMenuW(menu, MF_STRING | MF_DISABLED, MENU_IP, ip_item);
     AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
     AppendMenuW(menu, MF_STRING, MENU_OPEN_STATUS, L"เปิดหน้าสถานะ");
+    AppendMenuW(menu, MF_STRING, MENU_TEST_PRINT, L"พิมพ์ทดสอบ");
     AppendMenuW(menu, MF_STRING, MENU_OPEN_LOG, L"เปิด Log");
     AppendMenuW(menu, MF_STRING, MENU_SETUP, L"ตั้งค่า IP เครื่องพิมพ์...");
     AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
@@ -402,6 +460,11 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w_param, L
             switch (LOWORD(w_param)) {
                 case MENU_OPEN_STATUS:
                     ShellExecuteW(NULL, L"open", L"http://localhost:3001/status", NULL, NULL, SW_SHOWNORMAL); break;
+                case MENU_TEST_PRINT: {
+                    HANDLE thread = CreateThread(NULL, 0, test_print_thread, NULL, 0, NULL);
+                    if (thread) CloseHandle(thread);
+                    break;
+                }
                 case MENU_OPEN_LOG:
                     ShellExecuteW(NULL, L"open", g_log_path, NULL, NULL, SW_SHOWNORMAL); break;
                 case MENU_SETUP:

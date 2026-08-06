@@ -58,6 +58,7 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "เปิดหน้าสถานะ", action: #selector(openStatus), keyEquivalent: "b"))
+        menu.addItem(NSMenuItem(title: "พิมพ์ทดสอบ", action: #selector(testPrint), keyEquivalent: "t"))
         menu.addItem(NSMenuItem(title: "เปิด Log", action: #selector(openLog), keyEquivalent: "l"))
         menu.addItem(NSMenuItem(title: "ตั้งค่า IP เครื่องพิมพ์...", action: #selector(openSetup), keyEquivalent: "s"))
         menu.addItem(.separator())
@@ -155,6 +156,58 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
 
     @objc func openStatus() {
         NSWorkspace.shared.open(URL(string: "http://localhost:3001/status")!)
+    }
+
+    @objc func testPrint() {
+        guard let url = URL(string: "http://localhost:3001/print") else { return }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let date = formatter.string(from: Date())
+        var printerIp = "-"
+        if let data = FileManager.default.contents(atPath: configPath),
+           let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let ip = config["printerIp"] as? String {
+            printerIp = ip
+        }
+        let text = """
+
+        ================================
+          MeeSystemPos - TEST PRINT
+          Date: \(date)
+          Printer IP: \(printerIp)
+          Status: OK
+        ================================
+
+
+        """
+        guard let body = try? JSONSerialization.data(withJSONObject: ["text": text]) else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        updateStatus("สถานะ: 🟡 กำลังพิมพ์ทดสอบ...")
+
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            let statusCode = (response as? HTTPURLResponse)?.statusCode
+            let success = error == nil && statusCode == 200 && data.flatMap {
+                (try? JSONSerialization.jsonObject(with: $0) as? [String: Any])?["success"] as? Bool
+            } == true
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = success ? "พิมพ์ทดสอบสำเร็จ" : "พิมพ์ทดสอบไม่สำเร็จ"
+                if success {
+                    alert.informativeText = "ส่งใบพิมพ์ทดสอบไปยังเครื่องพิมพ์ \(printerIp) แล้ว"
+                    alert.alertStyle = .informational
+                } else {
+                    alert.informativeText = error?.localizedDescription ?? "กรุณาตรวจสอบสถานะ Print Proxy, IP และการเชื่อมต่อเครื่องพิมพ์"
+                    alert.alertStyle = .warning
+                }
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+                self?.pollStatus()
+            }
+        }.resume()
     }
 
     @objc func openLog() {

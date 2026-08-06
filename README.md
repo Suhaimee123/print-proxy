@@ -25,7 +25,7 @@ print-proxy/
 1. เข้าโฟลเดอร์ `windows` แล้วดับเบิ้ลคลิก `print-proxy-win.exe`
 2. ครั้งแรกที่เปิด โปรแกรมจะถาม IP Address ของเครื่องพิมพ์ ให้กรอก IP เช่น `192.168.1.100`
 3. โปรแกรมจะทำงานในพื้นหลังโดยไม่มีหน้าต่าง Command Prompt และมีไอคอนเครื่องพิมพ์ใน System Tray
-4. คลิกไอคอนเพื่อดูสถานะ ตั้งค่า IP, Restart, Stop หรือ Quit
+4. คลิกไอคอนเพื่อดูสถานะ พิมพ์ทดสอบ ตั้งค่า IP, Restart, Stop หรือ Quit
 
 Config และ log จะอยู่ที่ `%APPDATA%\MeeSystemPos\`
 
@@ -34,7 +34,7 @@ Config และ log จะอยู่ที่ `%APPDATA%\MeeSystemPos\`
 ### 2. สำหรับ macOS
 1. เข้าโฟลเดอร์ `macos` แล้วดับเบิ้ลคลิก `print-proxy-macos.app`
 2. โปรแกรมจะทำงานในพื้นหลังโดยไม่มี Terminal และมีไอคอนเครื่องพิมพ์บน Menu Bar
-3. คลิกไอคอนเพื่อดูสถานะ ตั้งค่า IP, Restart, Stop หรือ Quit
+3. คลิกไอคอนเพื่อดูสถานะ พิมพ์ทดสอบ ตั้งค่า IP, Restart, Stop หรือ Quit
 
 Config และ log จะอยู่ที่ `~/Library/Application Support/MeeSystemPos/`
 

@@ -79,7 +79,7 @@ print-proxy/
 
 - ไม่มีหน้าต่าง Terminal ค้าง
 - มีไอคอนเครื่องพิมพ์บน Menu Bar
-- สามารถดูสถานะ ตั้งค่า IP, Restart, Stop และ Quit ได้
+- สามารถดูสถานะ พิมพ์ทดสอบ ตั้งค่า IP, Restart, Stop และ Quit ได้
 - มี server binary ฝังอยู่ภายในแอป
 
 `macos/menu.swift` คือ source code ของ Menu Bar app
@@ -94,7 +94,7 @@ Mac app เป็น ARM64 แต่ server ภายในเป็น x86-64 �
 
 - ไม่มีหน้าต่าง Command Prompt ค้าง
 - มีไอคอนเครื่องพิมพ์ใน System Tray
-- สามารถดูสถานะ ตั้งค่า IP, Restart, Stop และ Quit ได้
+- สามารถดูสถานะ พิมพ์ทดสอบ ตั้งค่า IP, Restart, Stop และ Quit ได้
 - ไม่ต้องติดตั้ง Node.js
 - Server ถูกฝังอยู่ในไฟล์ `.exe`
 

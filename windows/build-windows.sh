@@ -29,7 +29,7 @@ fi
 "$compiler" -Os -s -municode -mwindows -static -finput-charset=UTF-8 \
   "$script_dir/windows-tray.c" "$build_dir/windows-tray-res.o" \
   -o "$build_dir/print-proxy-win.exe" \
-  -lshell32 -lws2_32 -lgdi32 -luser32
+  -lshell32 -lws2_32 -lwinhttp -lgdi32 -luser32
 
 mv "$build_dir/print-proxy-win.exe" "$script_dir/print-proxy-win.exe"
 echo "Built: $script_dir/print-proxy-win.exe"

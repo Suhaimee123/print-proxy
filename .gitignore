@@ -2,9 +2,15 @@
 node_modules/
 
 # Build artifacts
-print-proxy-win.exe
+windows/print-proxy-win.exe
 print-proxy-macos
+macos/print-proxy-macos.app/
+print-proxy-server-bin
 print-proxy
+
+# Local files
+.DS_Store
+*.log
 
 # App Configuration
 printer-config.json

@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "build:windows": "bash windows/build-windows.sh"
+  },
   "dependencies": {
     "iconv-lite": "^0.7.2"
   }

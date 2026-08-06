@@ -6,8 +6,11 @@ const readline = require('readline');
 const path = require('path');
 
 const isPkg = typeof process.pkg !== 'undefined';
-// Save config in the same directory as the executable
-const configPath = isPkg ? path.join(path.dirname(process.execPath), 'printer-config.json') : path.join(__dirname, 'printer-config.json');
+// The menu bar app supplies a writable Application Support directory.
+// Keep the old location as a fallback for CLI/Windows builds.
+const configDir = process.env.PRINT_PROXY_CONFIG_DIR ||
+    (isPkg ? path.dirname(process.execPath) : __dirname);
+const configPath = path.join(configDir, 'printer-config.json');
 
 /**
  * CONFIGURATION
@@ -28,7 +31,7 @@ const CUT_PAPER = GS + 'V' + '\x41' + '\x00';
 function pixelsToRaster(pixels, width, height) {
     const widthBytes = Math.ceil(width / 8);
     const raster = Buffer.alloc(widthBytes * height);
-    
+
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
             const idx = (y * width + x) * 4;
@@ -36,23 +39,23 @@ function pixelsToRaster(pixels, width, height) {
             const g = pixels[idx + 1];
             const b = pixels[idx + 2];
             const a = pixels[idx + 3];
-            
+
             const luminance = (r * 0.299 + g * 0.587 + b * 0.114);
-            const isBlack = a > 50 && luminance < 200; 
-            
+            const isBlack = a > 50 && luminance < 200;
+
             if (isBlack) {
                 const byteIdx = y * widthBytes + Math.floor(x / 8);
                 raster[byteIdx] |= (1 << (7 - (x % 8)));
             }
         }
     }
-    
+
     const header = Buffer.from([
         0x1d, 0x76, 0x30, 0x00,
         widthBytes & 0xff, (widthBytes >> 8) & 0xff,
         height & 0xff, (height >> 8) & 0xff
     ]);
-    
+
     return Buffer.concat([header, raster]);
 }
 
@@ -68,6 +71,17 @@ function startServer() {
             return;
         }
 
+        if (req.method === 'GET' && (req.url === '/' || req.url === '/status')) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+                status: 'online',
+                message: 'MeeSystemPos Print Proxy is running',
+                printerIp: PRINTER_IP,
+                port: PROXY_PORT
+            }, null, 2));
+            return;
+        }
+
         if (req.method === 'POST' && req.url === '/print') {
             let body = [];
             req.on('data', chunk => { body.push(chunk); });
@@ -75,14 +89,14 @@ function startServer() {
                 try {
                     const fullBody = Buffer.concat(body).toString();
                     const data = JSON.parse(fullBody);
-                    
+
                     console.log(`Received print request. Pixels: ${data.pixels ? data.pixels.length : 0}, Width: ${data.width}, Height: ${data.height}`);
 
                     const client = new net.Socket();
                     client.connect(PRINTER_PORT, PRINTER_IP, () => {
                         console.log(`Connected to printer ${PRINTER_IP}`);
                         client.write(Buffer.from(INITIALIZE, 'binary'));
-                        
+
                         if (data.pixels && data.width && data.height) {
                             console.log('Printing Image...');
                             const raster = pixelsToRaster(data.pixels, data.width, data.height);
@@ -92,7 +106,7 @@ function startServer() {
                             client.write(Buffer.from(ESC + 't' + '\x19', 'binary'));
                             client.write(iconv.encode(data.text, 'cp874'));
                         }
-                        
+
                         client.write(Buffer.from(CUT_PAPER, 'binary'));
                         client.end();
                         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -113,7 +127,7 @@ function startServer() {
         if (req.method === 'POST' && req.url === '/kick') {
             console.log(`Received kick drawer request.`);
             const KICK_DRAWER = '\x1B\x70\x00\x19\xFA'; // ESC p 0 25 250
-            
+
             const client = new net.Socket();
             client.connect(PRINTER_PORT, PRINTER_IP, () => {
                 console.log(`Connected to printer ${PRINTER_IP} for kicking drawer`);
@@ -130,6 +144,11 @@ function startServer() {
         }
     });
 
+    server.on('error', (err) => {
+        console.error(`[Error] เปิดพอร์ต ${PROXY_PORT} ไม่สำเร็จ: ${err.message}`);
+        process.exitCode = 1;
+    });
+
     server.listen(PROXY_PORT, () => {
         console.log('\x1b[36m=========================================\x1b[0m');
         console.log(`\x1b[32m   Ready! Using Printer IP: ${PRINTER_IP}\x1b[0m`);
@@ -139,19 +158,38 @@ function startServer() {
     });
 }
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
+let rl;
 function askQuestion(query) {
+    if (!rl) {
+        rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+    }
     return new Promise(resolve => rl.question(query, resolve));
 }
 
+function isPortInUse(port) {
+    return new Promise((resolve) => {
+        const tester = net.createServer()
+            .once('error', (err) => {
+                if (err.code === 'EADDRINUSE') {
+                    resolve(true);
+                } else {
+                    resolve(false);
+                }
+            })
+            .once('listening', () => {
+                tester.once('close', () => resolve(false)).close();
+            })
+            .listen(port);
+    });
+}
+
 async function initConfig() {
-    console.log('\x1b[36m=========================================\x1b[0m');
-    console.log('\x1b[32m   MeeSystemPos - Print Proxy Setup      \x1b[0m');
-    console.log('\x1b[36m=========================================\x1b[0m\n');
+    process.on('SIGHUP', () => {});
+
+    const runServer = process.argv.includes('--run');
 
     let savedIp = null;
     if (fs.existsSync(configPath)) {
@@ -162,6 +200,44 @@ async function initConfig() {
             }
         } catch (e) {
             // ignore
+        }
+    }
+
+    if (runServer) {
+        if (savedIp) {
+            PRINTER_IP = savedIp;
+        }
+        startServer();
+        return;
+    }
+
+    console.log('\x1b[36m=========================================\x1b[0m');
+    console.log('\x1b[32m   MeeSystemPos - Print Proxy Setup      \x1b[0m');
+    console.log('\x1b[36m=========================================\x1b[0m\n');
+
+    const inUse = await isPortInUse(PROXY_PORT);
+    if (inUse) {
+        const answer = await askQuestion('พบ Print Proxy กำลังทำงานอยู่แล้ว คุณต้องการรีสตาร์ทบริการใหม่ใช่หรือไม่? (y/N): ');
+        if (answer.trim().toLowerCase() === 'y') {
+            const { execSync } = require('child_process');
+            try {
+                execSync(`kill $(lsof -t -i:${PROXY_PORT})`);
+                console.log('ปิดบริการเดิมสำเร็จแล้ว.');
+                await new Promise(r => setTimeout(r, 1000));
+            } catch (e) {
+                console.error('ไม่สามารถปิดบริการเดิมได้:', e.message);
+                if (rl) rl.close();
+                process.exit(1);
+            }
+        } else {
+            console.log('ใช้งานบริการเดิมต่อไป...');
+            if (rl) rl.close();
+
+            if (process.platform === 'darwin') {
+                const { exec } = require('child_process');
+                exec("osascript -e 'tell application \"Terminal\" to close first window' &");
+            }
+            process.exit(0);
         }
     }
 
@@ -180,17 +256,36 @@ async function initConfig() {
         }
     }
 
-    rl.close();
+    if (rl) rl.close();
 
-    // Save config
     try {
         fs.writeFileSync(configPath, JSON.stringify({ printerIp: PRINTER_IP }, null, 2));
     } catch (e) {
         console.error('\n[Warning] ไม่สามารถบันทึกการตั้งค่าได้');
     }
 
-    console.log('\nกำลังเปิดระบบ...\n');
-    startServer();
+    console.log('\nกำลังส่งโปรแกรมไปทำงานในพื้นหลัง (Background)...');
+
+    const { exec } = require('child_process');
+    const projectDir = path.dirname(configPath);
+
+    let runCmd;
+    if (isPkg) {
+        runCmd = `osascript -e 'do shell script "cd \\"${projectDir}\\" && \\"${process.execPath}\\" --run > /dev/null 2>&1 &"'`;
+    } else {
+        runCmd = `osascript -e 'do shell script "cd \\"${projectDir}\\" && node \\"${__filename}\\" --run > /dev/null 2>&1 &"'`;
+    }
+
+    exec(runCmd);
+
+    console.log('\n[Ready] เริ่มทำงานในพื้นหลังสำเร็จแล้ว! กำลังปิดหน้าต่างนี้...');
+    await new Promise(r => setTimeout(r, 1000));
+
+    if (process.platform === 'darwin') {
+        exec("osascript -e 'tell application \"Terminal\" to close first window' &");
+    }
+
+    process.exit(0);
 }
 
 initConfig();

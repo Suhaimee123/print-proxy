@@ -77,8 +77,16 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
             updateStatus("สถานะ: 🔴 ไม่พบ server binary")
             return
         }
-        guard FileManager.default.fileExists(atPath: configPath) else {
+        guard readPrinterIp() != nil else {
             openSetup()
+            return
+        }
+
+        guard canRunX86Binary() else {
+            lastLaunchError = "ต้องติดตั้ง Rosetta 2"
+            updateStatus("สถานะ: 🔴 ต้องติดตั้ง Rosetta 2")
+            appendLog("Rosetta 2 is required to run the embedded x86_64 server.\n")
+            showRosettaAlert()
             return
         }
 
@@ -112,6 +120,8 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
         }
 
         do {
+            appendLog("\n--- Launch \(ISO8601DateFormatter().string(from: Date())) ---\n")
+            appendLog("Config: \(configPath)\nServer: \(serverBinPath)\n")
             try p.run()
             serverProcess = p
             lastLaunchError = nil
@@ -132,6 +142,50 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
         try? p.run()
         p.waitUntilExit()
         return !pipe.fileHandleForReading.readDataToEndOfFile().isEmpty
+    }
+
+    func readPrinterIp() -> String? {
+        guard let data = FileManager.default.contents(atPath: configPath),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let ip = config["printerIp"] as? String,
+              isValidIPv4(ip) else { return nil }
+        return ip
+    }
+
+    func isValidIPv4(_ value: String) -> Bool {
+        let parts = value.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        return parts.allSatisfy { part in
+            guard !part.isEmpty, part.count <= 3, let number = Int(part) else { return false }
+            return number >= 0 && number <= 255
+        }
+    }
+
+    func canRunX86Binary() -> Bool {
+        #if arch(arm64)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/arch")
+        process.arguments = ["-x86_64", "/usr/bin/true"]
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+        #else
+        return true
+        #endif
+    }
+
+    func showRosettaAlert() {
+        let alert = NSAlert()
+        alert.messageText = "ต้องติดตั้ง Rosetta 2"
+        alert.informativeText = "Print Server ภายในเป็น x86_64 กรุณาเปิด Terminal แล้วรันคำสั่งนี้:\n\nsoftwareupdate --install-rosetta --agree-to-license\n\nเมื่อติดตั้งเสร็จให้กด Restart จากเมนูแอป"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "ตกลง")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     @objc func pollStatus() {
@@ -163,12 +217,7 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let date = formatter.string(from: Date())
-        var printerIp = "-"
-        if let data = FileManager.default.contents(atPath: configPath),
-           let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let ip = config["printerIp"] as? String {
-            printerIp = ip
-        }
+        let printerIp = readPrinterIp() ?? "-"
         let text = """
 
         ================================
@@ -218,27 +267,55 @@ class StatusBarApp: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSetup() {
-        // สร้าง config dir ถ้าไม่มี
         try? FileManager.default.createDirectory(atPath: configDir, withIntermediateDirectories: true)
+        var suggestedIp = readPrinterIp() ?? ""
 
-        // เขียน setup script ที่ run server binary และบันทึก config ไว้ที่ Application Support
-        let script = """
-        #!/bin/bash
-        mkdir -p "\(configDir)"
-        cd "\(configDir)"
-        arch -x86_64 "\(serverBinPath)"
-        """
-        let tmpScript = "/tmp/meesystempos-setup.command"
-        try? script.write(toFile: tmpScript, atomically: true, encoding: .utf8)
-        let chmod = Process()
-        chmod.executableURL = URL(fileURLWithPath: "/bin/chmod")
-        chmod.arguments = ["+x", tmpScript]
-        try? chmod.run(); chmod.waitUntilExit()
+        while true {
+            let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+            input.placeholderString = "เช่น 192.168.1.100"
+            input.stringValue = suggestedIp
 
-        let open = Process()
-        open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        open.arguments = [tmpScript]
-        try? open.run()
+            let alert = NSAlert()
+            alert.messageText = "ตั้งค่า IP เครื่องพิมพ์"
+            alert.informativeText = "กรอก IPv4 Address ของเครื่องพิมพ์ที่อยู่ในเครือข่ายเดียวกับ Mac"
+            alert.accessoryView = input
+            alert.addButton(withTitle: "บันทึก")
+            alert.addButton(withTitle: "ยกเลิก")
+            NSApp.activate(ignoringOtherApps: true)
+            input.becomeFirstResponder()
+
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            let ip = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isValidIPv4(ip) else {
+                suggestedIp = ip
+                let warning = NSAlert()
+                warning.messageText = "IP Address ไม่ถูกต้อง"
+                warning.informativeText = "กรุณากรอกในรูปแบบ เช่น 192.168.1.100"
+                warning.alertStyle = .warning
+                warning.runModal()
+                continue
+            }
+
+            do {
+                let data = try JSONSerialization.data(withJSONObject: ["printerIp": ip], options: [.prettyPrinted, .sortedKeys])
+                try data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
+                appendLog("Saved printer IP: \(ip)\n")
+                if isPortInUse() {
+                    stopServer()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.launchServer() }
+                } else {
+                    launchServer()
+                }
+            } catch {
+                lastLaunchError = error.localizedDescription
+                let failure = NSAlert()
+                failure.messageText = "บันทึกการตั้งค่าไม่สำเร็จ"
+                failure.informativeText = error.localizedDescription
+                failure.alertStyle = .critical
+                failure.runModal()
+            }
+            return
+        }
     }
 
     @objc func stopServer() {

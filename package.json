@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "build:macos": "bash macos/build-macos.sh",
     "build:windows": "bash windows/build-windows.sh"
   },
   "dependencies": {

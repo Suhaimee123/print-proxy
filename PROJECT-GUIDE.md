@@ -43,7 +43,9 @@ MeeSystemPos Print Proxy
 print-proxy/
 ├── macos/
 │   ├── print-proxy-macos.app
-│   └── menu.swift
+│   ├── MeeSystemPos-Print-Proxy-macOS.zip
+│   ├── menu.swift
+│   └── build-macos.sh
 ├── windows/
 │   ├── print-proxy-win.exe
 │   ├── windows-tray.c
@@ -166,9 +168,9 @@ POST http://localhost:3001/kick
 
 ### macOS
 
-1. ส่ง `macos/print-proxy-macos.app` ไปยังเครื่องร้าน
-2. เปิดแอป
-3. ตั้งค่า IP จากไอคอนเครื่องพิมพ์บน Menu Bar
+1. ส่ง `macos/MeeSystemPos-Print-Proxy-macOS.zip` ไปยังเครื่องร้าน
+2. แตก ZIP และเปิดแอป
+3. กรอก IP จากหน้าต่างตั้งค่าในครั้งแรก
 4. รอให้สถานะเป็น Online
 5. เปิดเว็บ POS แล้วทดลองพิมพ์
 
@@ -180,6 +182,8 @@ POST http://localhost:3001/kick
 - Print Proxy ต้องเปิดอยู่ก่อนสั่งพิมพ์
 - Windows อาจแสดง SmartScreen เพราะ `.exe` ยังไม่มี Code Signing Certificate
 - Mac เครื่องใหม่ต้องมี Rosetta เพราะ server ภายในเป็น x86-64
+- Mac app รุ่น 1.1 เป็น Universal รองรับทั้ง Intel และ Apple Silicon
+- ควรส่ง Mac app ผ่าน `MeeSystemPos-Print-Proxy-macOS.zip` เพื่อรักษาโครงสร้างและสิทธิ์ของไฟล์
 - พอร์ต `3001` ต้องไม่ถูกโปรแกรมอื่นใช้งาน
 - ระบบปัจจุบันไม่มี authentication และอนุญาต CORS ทั้งหมด จึงควรใช้ภายในเครือข่ายร้านที่เชื่อถือได้
 

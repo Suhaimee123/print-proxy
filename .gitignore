@@ -5,8 +5,12 @@ node_modules/
 windows/print-proxy-win.exe
 print-proxy-macos
 macos/print-proxy-macos.app/
+macos/MeeSystemPos-Print-Proxy-macOS.zip
 print-proxy-server-bin
 print-proxy
+
+# สำเนาแอปที่ build ไว้เก่า (เก็บในเครื่อง ไม่เข้า git)
+Archive/
 
 # Local files
 .DS_Store

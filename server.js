@@ -18,6 +18,9 @@ const configPath = path.join(configDir, 'printer-config.json');
 let PRINTER_IP = '192.168.1.220';
 const PRINTER_PORT = 9100;
 const PROXY_PORT = 3001;
+/** เวอร์ชัน API ที่เว็บใช้ตรวจความสามารถของ proxy (v2 = รับข้อมูล ESC/POS ดิบ) */
+const PROXY_API_VERSION = 2;
+const CAPABILITIES = ['pixels', 'text', 'kick', 'raw'];
 
 // ESC/POS Commands
 const ESC = '\x1B';
@@ -77,7 +80,9 @@ function startServer() {
                 status: 'online',
                 message: 'MeeSystemPos Print Proxy is running',
                 printerIp: PRINTER_IP,
-                port: PROXY_PORT
+                port: PROXY_PORT,
+                version: PROXY_API_VERSION,
+                capabilities: CAPABILITIES
             }, null, 2));
             return;
         }
@@ -92,9 +97,29 @@ function startServer() {
 
                     console.log(`Received print request. Pixels: ${data.pixels ? data.pixels.length : 0}, Width: ${data.width}, Height: ${data.height}`);
 
+                    const hasJob = (data.pixels && data.width && data.height) || data.text || typeof data.raw === 'string';
+                    if (!hasJob) {
+                        // ไม่มีงานให้พิมพ์ — อย่าส่งแค่คำสั่งตัดกระดาษไปเปล่า ๆ
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: 'empty print job' }));
+                        return;
+                    }
+
                     const client = new net.Socket();
                     client.connect(PRINTER_PORT, PRINTER_IP, () => {
                         console.log(`Connected to printer ${PRINTER_IP}`);
+
+                        // v2: เว็บสร้างคำสั่ง ESC/POS ครบชุดตามรุ่นเครื่องแล้ว (ขนาดกระดาษ/ตัด/ลิ้นชัก) — ส่งต่อตรง ๆ
+                        if (typeof data.raw === 'string') {
+                            const raw = Buffer.from(data.raw, 'base64');
+                            console.log(`Printing raw ESC/POS (${raw.length} bytes)...`);
+                            client.write(raw);
+                            client.end();
+                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                            res.end(JSON.stringify({ success: true }));
+                            return;
+                        }
+
                         client.write(Buffer.from(INITIALIZE, 'binary'));
 
                         if (data.pixels && data.width && data.height) {

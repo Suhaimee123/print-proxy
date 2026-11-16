@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>th</string>
+    <key>CFBundleExecutable</key>
+    <string>print-proxy-macos</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.meesystempos.printproxy</string>
+    <key>CFBundleName</key>
+    <string>MeeSystemPos Print Proxy</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>2</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>ใช้เชื่อมต่อเครื่องพิมพ์ใบเสร็จในเครือข่ายร้าน</string>
+</dict>
+</plist>
